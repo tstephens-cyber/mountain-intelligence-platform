@@ -1,6 +1,7 @@
 import { useMemo, useState, type ChangeEvent, type DragEvent } from 'react'
 import AlertCard from '../components/AlertCard'
 import ExecutiveBriefCard from '../components/ExecutiveBriefCard'
+import { useBusinessContext } from '../context/BusinessContext'
 import {
   ACCEPTED_DOCUMENT_EXTENSIONS,
   analyzeFinancialDocument,
@@ -50,6 +51,7 @@ function mergeDocuments(existing: UploadedDocument[], incoming: UploadedDocument
 }
 
 function DocumentIntelligencePage() {
+  const { applyFinancialSnapshot } = useBusinessContext()
   const [uploadedDocuments, setUploadedDocuments] = useState<UploadedDocument[]>([])
   const [isDragActive, setIsDragActive] = useState(false)
   const [uploadError, setUploadError] = useState('')
@@ -122,6 +124,9 @@ function DocumentIntelligencePage() {
     try {
       const result = await analyzeFinancialDocument(documentToAnalyze.file)
       setAnalysisResult(result)
+      if (result.snapshot) {
+        applyFinancialSnapshot(result.snapshot)
+      }
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unable to analyze this document right now.'
       setAnalysisError(message)
@@ -233,12 +238,47 @@ function DocumentIntelligencePage() {
                   <ul className="space-y-2">
                     {analysisResult.metrics.map((metric) => (
                       <li key={metric.key} className="rounded-xl border border-cyan-300/20 bg-slate-900/40 px-3 py-2 text-sm text-cyan-50">
-                        <span className="font-semibold">{metric.label}:</span> {metric.value.toLocaleString('en-US')} <span className="text-xs text-cyan-200">({metric.source})</span>
+                        <span className="font-semibold">{metric.label}:</span> {metric.value.toLocaleString('en-US')} <span className="text-xs text-cyan-200">(confidence {Math.round(metric.confidence.score * 100)}%, {metric.source})</span>
+                        {metric.warning ? <p className="mt-1 text-xs text-amber-200">Warning: {metric.warning}</p> : null}
                       </li>
                     ))}
                   </ul>
                 )}
               </div>
+
+              {analysisResult.snapshot ? (
+                <div className="mt-4 space-y-2">
+                  <p className="text-xs uppercase tracking-[0.2em] text-cyan-200">Financial snapshot</p>
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    {[
+                      { label: 'Revenue', metric: analysisResult.snapshot.revenue },
+                      { label: 'Revenue Target', metric: analysisResult.snapshot.revenueTarget },
+                      { label: 'Scheduled Revenue', metric: analysisResult.snapshot.scheduledRevenue },
+                      { label: 'Labor Dollars', metric: analysisResult.snapshot.laborDollars },
+                      { label: 'Labor Percentage', metric: analysisResult.snapshot.laborPercentage },
+                      { label: 'Chemical Cost', metric: analysisResult.snapshot.chemicalCost },
+                      { label: 'Vehicle Cost', metric: analysisResult.snapshot.vehicleCost },
+                      { label: 'Rent', metric: analysisResult.snapshot.rent },
+                      { label: 'EBITDA', metric: analysisResult.snapshot.ebitda },
+                      { label: 'EBITDA Percentage', metric: analysisResult.snapshot.ebitdaPercentage },
+                      { label: 'Retention', metric: analysisResult.snapshot.retention },
+                      { label: 'Productivity', metric: analysisResult.snapshot.productivity },
+                      { label: 'Forecast', metric: analysisResult.snapshot.forecast },
+                    ].map(({ label, metric }) => {
+                      return (
+                        <div key={label} className="rounded-xl border border-cyan-300/20 bg-slate-900/40 px-3 py-2 text-xs text-cyan-50">
+                          <p className="font-semibold">{label}</p>
+                          <p className="mt-1 text-sm">
+                            {metric.value === null ? 'Not found' : metric.value.toLocaleString('en-US')}
+                          </p>
+                          <p className="text-cyan-200">Confidence: {Math.round(metric.confidence.score * 100)}% ({metric.confidence.level})</p>
+                          {metric.warning ? <p className="text-amber-200">Warning: {metric.warning}</p> : null}
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+              ) : null}
 
               <div className="mt-4 space-y-2">
                 <p className="text-xs uppercase tracking-[0.2em] text-cyan-200">Warnings</p>

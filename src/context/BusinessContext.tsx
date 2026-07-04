@@ -1,4 +1,5 @@
-import { createContext, useContext, type ReactNode } from 'react'
+import { createContext, useContext, useMemo, useState, type ReactNode } from 'react'
+import type { FinancialSnapshot } from '../services/mountainFinancialParser'
 
 export interface Revenue {
   amount: number
@@ -31,6 +32,26 @@ export interface Productivity {
   score: number
 }
 
+export interface LaborDollars {
+  amount: number
+  currency: 'USD'
+}
+
+export interface ChemicalCost {
+  amount: number
+  currency: 'USD'
+}
+
+export interface VehicleCost {
+  amount: number
+  currency: 'USD'
+}
+
+export interface Rent {
+  amount: number
+  currency: 'USD'
+}
+
 export interface Forecast {
   month: string
   projectedRevenue: number
@@ -48,6 +69,10 @@ export interface Branch {
   scheduledRevenue: ScheduledRevenue
   ebitda: EBITDA
   laborPercentage: LaborPercentage
+  laborDollars: LaborDollars
+  chemicalCost: ChemicalCost
+  vehicleCost: VehicleCost
+  rent: Rent
   retention: Retention
   productivity: Productivity
   forecast: Forecast
@@ -63,6 +88,7 @@ export interface Company {
 interface BusinessContextValue {
   company: Company
   selectedBranch: Branch
+  applyFinancialSnapshot: (snapshot: FinancialSnapshot) => void
 }
 
 const sampleBranch: Branch = {
@@ -85,6 +111,22 @@ const sampleBranch: Branch = {
   },
   laborPercentage: {
     percent: 22.5,
+  },
+  laborDollars: {
+    amount: 95521,
+    currency: 'USD',
+  },
+  chemicalCost: {
+    amount: 14300,
+    currency: 'USD',
+  },
+  vehicleCost: {
+    amount: 6200,
+    currency: 'USD',
+  },
+  rent: {
+    amount: 17800,
+    currency: 'USD',
   },
   retention: {
     percent: 83,
@@ -114,9 +156,67 @@ interface BusinessContextProviderProps {
 }
 
 export function BusinessContextProvider({ children }: BusinessContextProviderProps) {
+  const [selectedBranch, setSelectedBranch] = useState<Branch>(sampleBranch)
+
+  function applyFinancialSnapshot(snapshot: FinancialSnapshot) {
+    setSelectedBranch((previous) => ({
+      ...previous,
+      revenue: {
+        ...previous.revenue,
+        amount: snapshot.revenue.value ?? previous.revenue.amount,
+      },
+      revenueTarget: {
+        ...previous.revenueTarget,
+        amount: snapshot.revenueTarget.value ?? previous.revenueTarget.amount,
+      },
+      scheduledRevenue: {
+        ...previous.scheduledRevenue,
+        amount: snapshot.scheduledRevenue.value ?? previous.scheduledRevenue.amount,
+      },
+      laborDollars: {
+        ...previous.laborDollars,
+        amount: snapshot.laborDollars.value ?? previous.laborDollars.amount,
+      },
+      laborPercentage: {
+        percent: snapshot.laborPercentage.value ?? previous.laborPercentage.percent,
+      },
+      chemicalCost: {
+        ...previous.chemicalCost,
+        amount: snapshot.chemicalCost.value ?? previous.chemicalCost.amount,
+      },
+      vehicleCost: {
+        ...previous.vehicleCost,
+        amount: snapshot.vehicleCost.value ?? previous.vehicleCost.amount,
+      },
+      rent: {
+        ...previous.rent,
+        amount: snapshot.rent.value ?? previous.rent.amount,
+      },
+      ebitda: {
+        percent: snapshot.ebitdaPercentage.value ?? snapshot.ebitda.value ?? previous.ebitda.percent,
+      },
+      retention: {
+        percent: snapshot.retention.value ?? previous.retention.percent,
+      },
+      productivity: {
+        score: snapshot.productivity.value ?? previous.productivity.score,
+      },
+      forecast: {
+        ...previous.forecast,
+        projectedRevenue: snapshot.forecast.value ?? previous.forecast.projectedRevenue,
+      },
+    }))
+  }
+
+  const company = useMemo<Company>(() => ({
+    ...sampleCompany,
+    branches: [selectedBranch],
+  }), [selectedBranch])
+
   const value: BusinessContextValue = {
-    company: sampleCompany,
-    selectedBranch: sampleBranch,
+    company,
+    selectedBranch,
+    applyFinancialSnapshot,
   }
 
   return <BusinessContext.Provider value={value}>{children}</BusinessContext.Provider>

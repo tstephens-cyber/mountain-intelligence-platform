@@ -1,4 +1,10 @@
 import * as XLSX from 'xlsx'
+import {
+  parseMountainFinancialSnapshot,
+  type FinancialSnapshot,
+  type ParsedWorksheetRow,
+  type ParserConfidence,
+} from './mountainFinancialParser'
 
 export type DocumentStatus = 'ready_for_analysis'
 
@@ -18,7 +24,9 @@ export interface ExtractedMetric {
   key: string
   label: string
   value: number
+  confidence: ParserConfidence
   source: string
+  warning: string | null
 }
 
 export interface ExtractionWarning {
@@ -31,6 +39,7 @@ export interface FinancialExtractionResult {
   documentType: DocumentType
   metrics: ExtractedMetric[]
   warnings: ExtractionWarning[]
+  snapshot: FinancialSnapshot | null
 }
 
 export const ACCEPTED_DOCUMENT_EXTENSIONS = ['.xlsx', '.xls', '.csv', '.pdf'] as const
@@ -41,6 +50,7 @@ const FINANCIAL_METRICS: Array<{ key: string; label: string; aliases: string[] }
   { key: 'target', label: 'Target', aliases: ['target'] },
   { key: 'scheduled', label: 'Scheduled', aliases: ['scheduled'] },
   { key: 'ebitda', label: 'EBITDA', aliases: ['ebitda'] },
+  { key: 'ebitdaPercentage', label: 'EBITDA Percentage', aliases: ['ebitda %', 'ebitda percentage', 'ebita %'] },
   { key: 'ebita', label: 'EBITA', aliases: ['ebita'] },
   { key: 'labor', label: 'Labor', aliases: ['labor'] },
   { key: 'retention', label: 'Retention', aliases: ['retention'] },
@@ -109,8 +119,8 @@ function findNumericValueInRow(cells: unknown[], startIndex: number): number | n
   return null
 }
 
-function rowsFromWorkbook(workbook: XLSX.WorkBook): Array<{ sheetName: string; rowIndex: number; cells: unknown[] }> {
-  const rows: Array<{ sheetName: string; rowIndex: number; cells: unknown[] }> = []
+function rowsFromWorkbook(workbook: XLSX.WorkBook): ParsedWorksheetRow[] {
+  const rows: ParsedWorksheetRow[] = []
 
   for (const sheetName of workbook.SheetNames) {
     const sheet = workbook.Sheets[sheetName]
@@ -160,11 +170,13 @@ export async function analyzeFinancialDocument(file: File): Promise<FinancialExt
           message: 'Local financial extraction currently supports .csv, .xls, and .xlsx files.',
         },
       ],
+      snapshot: null,
     }
   }
 
   const workbook = await workbookFromFile(file, detectedType)
   const rows = rowsFromWorkbook(workbook)
+  const snapshot = parseMountainFinancialSnapshot(rows)
   const metrics = new Map<string, ExtractedMetric>()
 
   for (const row of rows) {
@@ -193,23 +205,65 @@ export async function analyzeFinancialDocument(file: File): Promise<FinancialExt
           key: metric.key,
           label: metric.label,
           value,
+          confidence: {
+            score: 0.7,
+            level: 'medium',
+          },
           source: `${row.sheetName} R${row.rowIndex + 1} C${index + 1}`,
+          warning: null,
         })
       }
     }
   }
 
+  const snapshotMetricMap: Array<{ key: string; label: string; data: FinancialSnapshot[keyof Omit<FinancialSnapshot, 'warnings'>] }> = [
+    { key: 'revenue', label: 'Revenue', data: snapshot.revenue },
+    { key: 'revenueTarget', label: 'Revenue Target', data: snapshot.revenueTarget },
+    { key: 'scheduledRevenue', label: 'Scheduled Revenue', data: snapshot.scheduledRevenue },
+    { key: 'laborDollars', label: 'Labor Dollars', data: snapshot.laborDollars },
+    { key: 'laborPercentage', label: 'Labor Percentage', data: snapshot.laborPercentage },
+    { key: 'chemicalCost', label: 'Chemical Cost', data: snapshot.chemicalCost },
+    { key: 'vehicleCost', label: 'Vehicle Cost', data: snapshot.vehicleCost },
+    { key: 'rent', label: 'Rent', data: snapshot.rent },
+    { key: 'ebitda', label: 'EBITDA', data: snapshot.ebitda },
+    { key: 'ebitdaPercentage', label: 'EBITDA Percentage', data: snapshot.ebitdaPercentage },
+    { key: 'retention', label: 'Retention', data: snapshot.retention },
+    { key: 'productivity', label: 'Productivity', data: snapshot.productivity },
+    { key: 'forecast', label: 'Forecast', data: snapshot.forecast },
+  ]
+
+  for (const metric of snapshotMetricMap) {
+    if (metric.data.value === null || !metric.data.source) {
+      continue
+    }
+
+    metrics.set(metric.key, {
+      key: metric.key,
+      label: metric.label,
+      value: metric.data.value,
+      confidence: metric.data.confidence,
+      source: metric.data.source,
+      warning: metric.data.warning,
+    })
+  }
+
   const extractedMetrics = Array.from(metrics.values())
-  const warnings: ExtractionWarning[] = FINANCIAL_METRICS.filter((metric) => !metrics.has(metric.key)).map((metric) => ({
+  const warningsFromMetrics: ExtractionWarning[] = FINANCIAL_METRICS.filter((metric) => !metrics.has(metric.key)).map((metric) => ({
     key: metric.key,
     message: `${metric.label} was not found in the uploaded file.`,
   }))
+  const parserWarnings: ExtractionWarning[] = snapshot.warnings.map((warning, index) => ({
+    key: `snapshot-${index + 1}`,
+    message: warning.message,
+  }))
+  const warnings = [...warningsFromMetrics, ...parserWarnings]
 
   return {
     fileName: file.name,
     documentType: detectedType,
     metrics: extractedMetrics,
     warnings,
+    snapshot,
   }
 }
 
