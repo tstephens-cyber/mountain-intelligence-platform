@@ -2,23 +2,43 @@ import { NavLink } from 'react-router-dom'
 
 const navigation = [
   { name: 'Dashboard', path: '/', badge: 'Live' },
-  { name: 'AI Coach', path: '/ai-coach', badge: 'Beta' },
-  { name: 'Documents', path: '/documents', badge: 'New' },
-  { name: 'Analytics', path: '/analytics', badge: '24/7' },
+  { name: 'AI Coach', path: '/ai-coach', badge: 'Guide' },
+  { name: 'Documents', path: '/documents', badge: 'Intel' },
+  { name: 'Analytics', path: '/analytics', badge: 'Trend' },
+  { name: 'Workspace', path: '/workspace', badge: 'Flow' },
   { name: 'Settings', path: '/settings', badge: 'Ops' },
 ]
 
-function Sidebar() {
+interface SidebarProps {
+  isOpen: boolean
+  onClose: () => void
+}
+
+function Sidebar({ isOpen, onClose }: SidebarProps) {
   return (
-    <aside className="border-b border-white/10 bg-slate-950/95 px-4 py-5 backdrop-blur lg:min-h-screen lg:w-72 lg:border-b-0 lg:border-r lg:px-6">
-      <div className="flex items-center gap-3">
-        <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-gradient-to-br from-cyan-400 to-indigo-600 text-lg font-semibold shadow-lg shadow-cyan-500/20">
-          MI
+    <aside
+      className={`fixed inset-y-0 left-0 z-40 w-72 border-r border-white/10 bg-slate-950/95 px-4 py-5 backdrop-blur transition-transform duration-300 lg:translate-x-0 lg:px-6 ${
+        isOpen ? 'translate-x-0' : '-translate-x-full'
+      }`}
+    >
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex items-center gap-3">
+          <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-gradient-to-br from-cyan-400 to-indigo-600 text-lg font-semibold shadow-lg shadow-cyan-500/20">
+            MI
+          </div>
+          <div>
+            <p className="text-lg font-semibold tracking-tight text-white">Mountain Intelligence</p>
+            <p className="text-sm text-slate-400">Executive operating system</p>
+          </div>
         </div>
-        <div>
-          <p className="text-lg font-semibold tracking-tight text-white">Mountain Intelligence</p>
-          <p className="text-sm text-slate-400">Executive operating system</p>
-        </div>
+        <button
+          aria-label="Close sidebar"
+          className="rounded-xl border border-white/10 px-2 py-1 text-sm text-slate-300 lg:hidden"
+          onClick={onClose}
+          type="button"
+        >
+          X
+        </button>
       </div>
 
       <nav className="mt-8 space-y-2">
@@ -26,6 +46,8 @@ function Sidebar() {
           <NavLink
             key={item.path}
             to={item.path}
+            end={item.path === '/'}
+            onClick={onClose}
             className={({ isActive }) =>
               `flex items-center justify-between rounded-2xl px-3 py-3 text-sm font-medium transition ${
                 isActive
@@ -46,6 +68,8 @@ function Sidebar() {
         <p className="text-sm font-semibold text-cyan-200">Command center</p>
         <p className="mt-2 text-sm text-slate-300">Synchronized operations across your executive team.</p>
       </div>
+
+      <p className="mt-6 text-xs uppercase tracking-[0.2em] text-slate-500">Version 5.0.0 Foundation</p>
     </aside>
   )
 }
