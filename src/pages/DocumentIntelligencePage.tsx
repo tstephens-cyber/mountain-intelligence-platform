@@ -3,7 +3,9 @@ import AlertCard from '../components/AlertCard'
 import ExecutiveBriefCard from '../components/ExecutiveBriefCard'
 import {
   ACCEPTED_DOCUMENT_EXTENSIONS,
+  analyzeFinancialDocument,
   createUploadedDocument,
+  type FinancialExtractionResult,
   type UploadedDocument,
 } from '../services/documentService'
 
@@ -51,7 +53,9 @@ function DocumentIntelligencePage() {
   const [uploadedDocuments, setUploadedDocuments] = useState<UploadedDocument[]>([])
   const [isDragActive, setIsDragActive] = useState(false)
   const [uploadError, setUploadError] = useState('')
-  const [showAnalyzeResult, setShowAnalyzeResult] = useState(false)
+  const [isAnalyzing, setIsAnalyzing] = useState(false)
+  const [analysisError, setAnalysisError] = useState('')
+  const [analysisResult, setAnalysisResult] = useState<FinancialExtractionResult | null>(null)
 
   const acceptedTypesLabel = useMemo(() => ACCEPTED_DOCUMENT_EXTENSIONS.join(', '), [])
 
@@ -70,7 +74,8 @@ function DocumentIntelligencePage() {
     }
 
     setUploadError('')
-    setShowAnalyzeResult(false)
+    setAnalysisError('')
+    setAnalysisResult(null)
     setUploadedDocuments((previous) => mergeDocuments(previous, mappedDocuments))
   }
 
@@ -103,8 +108,26 @@ function DocumentIntelligencePage() {
     setIsDragActive(false)
   }
 
-  function handleAnalyzeDocument() {
-    setShowAnalyzeResult(true)
+  async function handleAnalyzeDocument() {
+    if (uploadedDocuments.length === 0) {
+      return
+    }
+
+    const documentToAnalyze = uploadedDocuments[uploadedDocuments.length - 1]
+
+    setIsAnalyzing(true)
+    setAnalysisError('')
+    setAnalysisResult(null)
+
+    try {
+      const result = await analyzeFinancialDocument(documentToAnalyze.file)
+      setAnalysisResult(result)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unable to analyze this document right now.'
+      setAnalysisError(message)
+    } finally {
+      setIsAnalyzing(false)
+    }
   }
 
   return (
@@ -186,17 +209,51 @@ function DocumentIntelligencePage() {
           <div className="mt-6">
             <button
               className="inline-flex items-center rounded-2xl bg-cyan-500/20 px-5 py-3 text-sm font-semibold text-cyan-200 transition hover:bg-cyan-500/30 disabled:cursor-not-allowed disabled:opacity-60"
-              disabled={uploadedDocuments.length === 0}
+              disabled={uploadedDocuments.length === 0 || isAnalyzing}
               onClick={handleAnalyzeDocument}
               type="button"
             >
-              Analyze Document
+              {isAnalyzing ? 'Analyzing...' : 'Analyze Document'}
             </button>
           </div>
 
-          {showAnalyzeResult ? (
+          {analysisError ? (
+            <p className="mt-4 rounded-2xl border border-rose-400/25 bg-rose-500/10 px-4 py-3 text-sm text-rose-200">{analysisError}</p>
+          ) : null}
+
+          {analysisResult ? (
             <div className="mt-4 rounded-2xl border border-cyan-400/25 bg-cyan-500/10 p-4 text-sm text-cyan-100">
-              <p className="font-semibold">Document queued for analysis. Financial extraction will be added in Sprint 2.3.</p>
+              <p className="font-semibold">Extraction results for {analysisResult.fileName}</p>
+
+              <div className="mt-3 space-y-2">
+                <p className="text-xs uppercase tracking-[0.2em] text-cyan-200">Extracted metrics</p>
+                {analysisResult.metrics.length === 0 ? (
+                  <p className="text-sm text-cyan-50">No financial metrics were extracted.</p>
+                ) : (
+                  <ul className="space-y-2">
+                    {analysisResult.metrics.map((metric) => (
+                      <li key={metric.key} className="rounded-xl border border-cyan-300/20 bg-slate-900/40 px-3 py-2 text-sm text-cyan-50">
+                        <span className="font-semibold">{metric.label}:</span> {metric.value.toLocaleString('en-US')} <span className="text-xs text-cyan-200">({metric.source})</span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+
+              <div className="mt-4 space-y-2">
+                <p className="text-xs uppercase tracking-[0.2em] text-cyan-200">Warnings</p>
+                {analysisResult.warnings.length === 0 ? (
+                  <p className="text-sm text-cyan-50">No extraction warnings.</p>
+                ) : (
+                  <ul className="space-y-1">
+                    {analysisResult.warnings.map((warning) => (
+                      <li key={warning.key} className="text-sm text-cyan-50">
+                        - {warning.message}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
             </div>
           ) : null}
         </div>
