@@ -1,10 +1,15 @@
+import { useState } from 'react'
+import type { FormEvent } from 'react'
 import AlertCard from '../components/AlertCard'
 import ExecutiveBriefCard from '../components/ExecutiveBriefCard'
+import { askCoach } from '../services/coachApi'
+import type { CoachType } from '../services/coachApi'
 
-const workflows = [
-  'Optimize executive messaging for the product launch review',
-  'Prepare risk mitigation talking points for the leadership team',
-  'Draft a one-page summary for the governance committee',
+const coachTypeOptions: Array<{ label: string; value: CoachType }> = [
+  { label: 'Executive', value: 'executive' },
+  { label: 'Finance', value: 'finance' },
+  { label: 'Operations', value: 'operations' },
+  { label: 'Sales', value: 'sales' },
 ]
 
 const scenarios = [
@@ -23,6 +28,39 @@ const scenarios = [
 ]
 
 function AICoachPage() {
+  const [coachType, setCoachType] = useState<CoachType>('executive')
+  const [question, setQuestion] = useState('')
+  const [replyText, setReplyText] = useState<string>('')
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string>('')
+
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+
+    if (!question.trim()) {
+      setError('Please enter a question before submitting.')
+      return
+    }
+
+    setLoading(true)
+    setError('')
+    setReplyText('')
+
+    try {
+      const result = await askCoach({
+        coach_type: coachType,
+        question: question.trim(),
+      })
+
+      setReplyText(result.displayText)
+    } catch (requestError) {
+      const message = requestError instanceof Error ? requestError.message : 'Unable to connect to AI Coach right now.'
+      setError(message)
+    } finally {
+      setLoading(false)
+    }
+  }
+
   return (
     <div className="space-y-6">
       <section className="rounded-[2rem] border border-white/10 bg-slate-900/70 p-6">
@@ -35,14 +73,54 @@ function AICoachPage() {
 
       <div className="grid gap-6 xl:grid-cols-[1.25fr_0.75fr]">
         <div className="rounded-[2rem] border border-white/10 bg-slate-900/70 p-6">
-          <h3 className="text-xl font-semibold text-white">Recommended workflows</h3>
-          <div className="mt-5 space-y-3">
-            {workflows.map((item) => (
-              <div key={item} className="rounded-3xl border border-white/10 bg-slate-950/70 px-4 py-4 text-sm text-slate-300">
-                {item}
-              </div>
-            ))}
-          </div>
+          <h3 className="text-xl font-semibold text-white">Ask AI Coach</h3>
+          <p className="mt-2 text-sm text-slate-300">Submit a question and get live coaching guidance from the backend.</p>
+
+          <form className="mt-5 space-y-4" onSubmit={handleSubmit}>
+            <label className="block space-y-2">
+              <span className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">Coach Type</span>
+              <select
+                className="w-full rounded-2xl border border-white/10 bg-slate-950/70 px-4 py-3 text-sm text-slate-100 outline-none focus:border-cyan-400/40"
+                onChange={(event) => setCoachType(event.target.value as CoachType)}
+                value={coachType}
+              >
+                {coachTypeOptions.map((option) => (
+                  <option key={option.value} className="bg-slate-950" value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <label className="block space-y-2">
+              <span className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">Question</span>
+              <textarea
+                className="min-h-36 w-full rounded-2xl border border-white/10 bg-slate-950/70 px-4 py-3 text-sm text-slate-100 outline-none placeholder:text-slate-500 focus:border-cyan-400/40"
+                onChange={(event) => setQuestion(event.target.value)}
+                placeholder="Ask for executive, financial, operations, or sales guidance..."
+                value={question}
+              />
+            </label>
+
+            <button
+              className="inline-flex items-center rounded-2xl bg-cyan-500/20 px-5 py-3 text-sm font-semibold text-cyan-200 transition hover:bg-cyan-500/30 disabled:cursor-not-allowed disabled:opacity-60"
+              disabled={loading}
+              type="submit"
+            >
+              {loading ? 'Sending to Coach...' : 'Submit Question'}
+            </button>
+          </form>
+
+          {error ? (
+            <p className="mt-4 rounded-2xl border border-rose-400/25 bg-rose-500/10 px-4 py-3 text-sm text-rose-200">{error}</p>
+          ) : null}
+
+          {replyText ? (
+            <div className="mt-4 rounded-2xl border border-cyan-400/20 bg-slate-950/70 p-4">
+              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-cyan-300">Coach Response</p>
+              <pre className="mt-3 whitespace-pre-wrap break-words font-sans text-sm text-slate-100">{replyText}</pre>
+            </div>
+          ) : null}
         </div>
 
         <div className="space-y-6">
