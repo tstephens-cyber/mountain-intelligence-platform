@@ -1,3 +1,5 @@
+import type { CurrentBusinessContext } from '../context/BusinessContext'
+
 export const COACH_API_BASE_URL = 'https://mountain-intelligence-coach-backend.onrender.com'
 
 export type CoachType = 'executive' | 'finance' | 'operations' | 'sales'
@@ -5,6 +7,19 @@ export type CoachType = 'executive' | 'finance' | 'operations' | 'sales'
 export interface CoachRequest {
   coach_type: CoachType
   question: string
+  business_context?: {
+    extracted_metrics: CurrentBusinessContext
+    current_dashboard_values: {
+      revenue: string
+      revenue_target: string
+      scheduled_revenue: string
+      ebitda_dollars: string
+      ebitda_percent: string
+      labor_percent: string
+      retention_percent: string
+      forecast_revenue: string
+    }
+  }
 }
 
 export interface CoachApiResult {

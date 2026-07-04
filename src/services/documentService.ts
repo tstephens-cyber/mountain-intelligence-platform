@@ -1,10 +1,10 @@
-import * as XLSX from 'xlsx'
 import {
   parseMountainFinancialSnapshot,
   type FinancialSnapshot,
   type ParsedWorksheetRow,
   type ParserConfidence,
 } from './mountainFinancialParser'
+import type { WorkBook } from 'xlsx'
 
 export type DocumentStatus = 'ready_for_analysis'
 
@@ -44,19 +44,6 @@ export interface FinancialExtractionResult {
 
 export const ACCEPTED_DOCUMENT_EXTENSIONS = ['.xlsx', '.xls', '.csv', '.pdf'] as const
 
-const FINANCIAL_METRICS: Array<{ key: string; label: string; aliases: string[] }> = [
-  { key: 'revenue', label: 'Revenue', aliases: ['revenue'] },
-  { key: 'sales', label: 'Sales', aliases: ['sales'] },
-  { key: 'target', label: 'Target', aliases: ['target'] },
-  { key: 'scheduled', label: 'Scheduled', aliases: ['scheduled'] },
-  { key: 'ebitda', label: 'EBITDA', aliases: ['ebitda'] },
-  { key: 'ebitdaPercentage', label: 'EBITDA Percentage', aliases: ['ebitda %', 'ebitda percentage', 'ebita %'] },
-  { key: 'ebita', label: 'EBITA', aliases: ['ebita'] },
-  { key: 'labor', label: 'Labor', aliases: ['labor'] },
-  { key: 'retention', label: 'Retention', aliases: ['retention'] },
-  { key: 'cogs', label: 'COGS', aliases: ['cogs'] },
-]
-
 function getDocumentType(fileName: string): DocumentType | null {
   const extension = fileName.split('.').pop()?.toLowerCase()
 
@@ -67,59 +54,13 @@ function getDocumentType(fileName: string): DocumentType | null {
   return null
 }
 
-function normalizeCellText(value: unknown): string {
-  if (typeof value === 'string') {
-    return value.trim().toLowerCase()
-  }
+type XlsxModule = typeof import('xlsx')
 
-  if (typeof value === 'number') {
-    return String(value)
-  }
-
-  return ''
+async function loadXlsxModule(): Promise<XlsxModule> {
+  return import('xlsx')
 }
 
-function parseNumericValue(value: unknown): number | null {
-  if (typeof value === 'number' && Number.isFinite(value)) {
-    return value
-  }
-
-  if (typeof value !== 'string') {
-    return null
-  }
-
-  const match = value.match(/-?\d{1,3}(?:,\d{3})*(?:\.\d+)?|-?\d+(?:\.\d+)?/)
-  if (!match) {
-    return null
-  }
-
-  const parsed = Number.parseFloat(match[0].replace(/,/g, ''))
-  return Number.isFinite(parsed) ? parsed : null
-}
-
-function findNumericValueInRow(cells: unknown[], startIndex: number): number | null {
-  const priorities = [startIndex + 1, startIndex - 1, startIndex + 2, startIndex - 2]
-
-  for (const index of priorities) {
-    if (index >= 0 && index < cells.length) {
-      const parsed = parseNumericValue(cells[index])
-      if (parsed !== null) {
-        return parsed
-      }
-    }
-  }
-
-  for (const cell of cells) {
-    const parsed = parseNumericValue(cell)
-    if (parsed !== null) {
-      return parsed
-    }
-  }
-
-  return null
-}
-
-function rowsFromWorkbook(workbook: XLSX.WorkBook): ParsedWorksheetRow[] {
+function rowsFromWorkbook(workbook: WorkBook, xlsxModule: XlsxModule): ParsedWorksheetRow[] {
   const rows: ParsedWorksheetRow[] = []
 
   for (const sheetName of workbook.SheetNames) {
@@ -128,7 +69,7 @@ function rowsFromWorkbook(workbook: XLSX.WorkBook): ParsedWorksheetRow[] {
       continue
     }
 
-    const sheetRows = XLSX.utils.sheet_to_json(sheet, {
+    const sheetRows = xlsxModule.utils.sheet_to_json(sheet, {
       header: 1,
       raw: true,
       defval: '',
@@ -142,14 +83,15 @@ function rowsFromWorkbook(workbook: XLSX.WorkBook): ParsedWorksheetRow[] {
   return rows
 }
 
-async function workbookFromFile(file: File, type: DocumentType): Promise<XLSX.WorkBook> {
+async function workbookFromFile(file: File, type: DocumentType, xlsxModule: XlsxModule): Promise<WorkBook> {
+
   if (type === 'csv') {
     const text = await file.text()
-    return XLSX.read(text, { type: 'string', raw: true })
+    return xlsxModule.read(text, { type: 'string', raw: true })
   }
 
   const buffer = await file.arrayBuffer()
-  return XLSX.read(buffer, { type: 'array', raw: true })
+  return xlsxModule.read(buffer, { type: 'array', raw: true })
 }
 
 export async function analyzeFinancialDocument(file: File): Promise<FinancialExtractionResult> {
@@ -174,48 +116,10 @@ export async function analyzeFinancialDocument(file: File): Promise<FinancialExt
     }
   }
 
-  const workbook = await workbookFromFile(file, detectedType)
-  const rows = rowsFromWorkbook(workbook)
+  const xlsxModule = await loadXlsxModule()
+  const workbook = await workbookFromFile(file, detectedType, xlsxModule)
+  const rows = rowsFromWorkbook(workbook, xlsxModule)
   const snapshot = parseMountainFinancialSnapshot(rows)
-  const metrics = new Map<string, ExtractedMetric>()
-
-  for (const row of rows) {
-    for (let index = 0; index < row.cells.length; index += 1) {
-      const cellText = normalizeCellText(row.cells[index])
-      if (!cellText) {
-        continue
-      }
-
-      for (const metric of FINANCIAL_METRICS) {
-        if (metrics.has(metric.key)) {
-          continue
-        }
-
-        const hasMatch = metric.aliases.some((alias) => cellText.includes(alias))
-        if (!hasMatch) {
-          continue
-        }
-
-        const value = findNumericValueInRow(row.cells, index)
-        if (value === null) {
-          continue
-        }
-
-        metrics.set(metric.key, {
-          key: metric.key,
-          label: metric.label,
-          value,
-          confidence: {
-            score: 0.7,
-            level: 'medium',
-          },
-          source: `${row.sheetName} R${row.rowIndex + 1} C${index + 1}`,
-          warning: null,
-        })
-      }
-    }
-  }
-
   const snapshotMetricMap: Array<{ key: string; label: string; data: FinancialSnapshot[keyof Omit<FinancialSnapshot, 'warnings'>] }> = [
     { key: 'revenue', label: 'Revenue', data: snapshot.revenue },
     { key: 'revenueTarget', label: 'Revenue Target', data: snapshot.revenueTarget },
@@ -231,6 +135,8 @@ export async function analyzeFinancialDocument(file: File): Promise<FinancialExt
     { key: 'productivity', label: 'Productivity', data: snapshot.productivity },
     { key: 'forecast', label: 'Forecast', data: snapshot.forecast },
   ]
+
+  const metrics = new Map<string, ExtractedMetric>()
 
   for (const metric of snapshotMetricMap) {
     if (metric.data.value === null || !metric.data.source) {
@@ -248,21 +154,16 @@ export async function analyzeFinancialDocument(file: File): Promise<FinancialExt
   }
 
   const extractedMetrics = Array.from(metrics.values())
-  const warningsFromMetrics: ExtractionWarning[] = FINANCIAL_METRICS.filter((metric) => !metrics.has(metric.key)).map((metric) => ({
-    key: metric.key,
-    message: `${metric.label} was not found in the uploaded file.`,
-  }))
   const parserWarnings: ExtractionWarning[] = snapshot.warnings.map((warning, index) => ({
-    key: `snapshot-${index + 1}`,
+    key: `${warning.code}-${index + 1}`,
     message: warning.message,
   }))
-  const warnings = [...warningsFromMetrics, ...parserWarnings]
 
   return {
     fileName: file.name,
     documentType: detectedType,
     metrics: extractedMetrics,
-    warnings,
+    warnings: parserWarnings,
     snapshot,
   }
 }

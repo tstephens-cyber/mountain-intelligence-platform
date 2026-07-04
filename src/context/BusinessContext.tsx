@@ -20,6 +20,11 @@ export interface EBITDA {
   percent: number
 }
 
+export interface EBITDAAmount {
+  amount: number
+  currency: 'USD'
+}
+
 export interface LaborPercentage {
   percent: number
 }
@@ -68,6 +73,7 @@ export interface Branch {
   revenueTarget: RevenueTarget
   scheduledRevenue: ScheduledRevenue
   ebitda: EBITDA
+  ebitdaDollars: EBITDAAmount
   laborPercentage: LaborPercentage
   laborDollars: LaborDollars
   chemicalCost: ChemicalCost
@@ -85,9 +91,31 @@ export interface Company {
   branches: Branch[]
 }
 
+export interface CurrentBusinessContext {
+  companyId: string
+  companyName: string
+  branchId: string
+  branchName: string
+  revenue: number
+  revenueTarget: number
+  scheduledRevenue: number
+  ebitdaPercent: number
+  ebitdaDollars: number
+  laborPercent: number
+  retentionPercent: number
+  productivityScore: number
+  forecastRevenue: number
+  laborDollars: number
+  chemicalCost: number
+  vehicleCost: number
+  rent: number
+}
+
 interface BusinessContextValue {
   company: Company
   selectedBranch: Branch
+  currentBusinessContext: CurrentBusinessContext
+  hasUploadedBusinessContext: boolean
   applyFinancialSnapshot: (snapshot: FinancialSnapshot) => void
 }
 
@@ -108,6 +136,10 @@ const sampleBranch: Branch = {
   },
   ebitda: {
     percent: 7.8,
+  },
+  ebitdaDollars: {
+    amount: 27162,
+    currency: 'USD',
   },
   laborPercentage: {
     percent: 22.5,
@@ -157,6 +189,7 @@ interface BusinessContextProviderProps {
 
 export function BusinessContextProvider({ children }: BusinessContextProviderProps) {
   const [selectedBranch, setSelectedBranch] = useState<Branch>(sampleBranch)
+  const [hasUploadedBusinessContext, setHasUploadedBusinessContext] = useState(false)
 
   function applyFinancialSnapshot(snapshot: FinancialSnapshot) {
     setSelectedBranch((previous) => ({
@@ -193,7 +226,14 @@ export function BusinessContextProvider({ children }: BusinessContextProviderPro
         amount: snapshot.rent.value ?? previous.rent.amount,
       },
       ebitda: {
-        percent: snapshot.ebitdaPercentage.value ?? snapshot.ebitda.value ?? previous.ebitda.percent,
+        percent:
+          snapshot.ebitda.value !== null && previous.revenue.amount > 0
+            ? (snapshot.ebitda.value / previous.revenue.amount) * 100
+            : snapshot.ebitdaPercentage.value ?? previous.ebitda.percent,
+      },
+      ebitdaDollars: {
+        ...previous.ebitdaDollars,
+        amount: snapshot.ebitda.value ?? previous.ebitdaDollars.amount,
       },
       retention: {
         percent: snapshot.retention.value ?? previous.retention.percent,
@@ -206,6 +246,8 @@ export function BusinessContextProvider({ children }: BusinessContextProviderPro
         projectedRevenue: snapshot.forecast.value ?? previous.forecast.projectedRevenue,
       },
     }))
+
+    setHasUploadedBusinessContext(true)
   }
 
   const company = useMemo<Company>(() => ({
@@ -213,9 +255,31 @@ export function BusinessContextProvider({ children }: BusinessContextProviderPro
     branches: [selectedBranch],
   }), [selectedBranch])
 
+  const currentBusinessContext = useMemo<CurrentBusinessContext>(() => ({
+    companyId: company.id,
+    companyName: company.name,
+    branchId: selectedBranch.id,
+    branchName: selectedBranch.name,
+    revenue: selectedBranch.revenue.amount,
+    revenueTarget: selectedBranch.revenueTarget.amount,
+    scheduledRevenue: selectedBranch.scheduledRevenue.amount,
+    ebitdaPercent: selectedBranch.ebitda.percent,
+    ebitdaDollars: selectedBranch.ebitdaDollars.amount,
+    laborPercent: selectedBranch.laborPercentage.percent,
+    retentionPercent: selectedBranch.retention.percent,
+    productivityScore: selectedBranch.productivity.score,
+    forecastRevenue: selectedBranch.forecast.projectedRevenue,
+    laborDollars: selectedBranch.laborDollars.amount,
+    chemicalCost: selectedBranch.chemicalCost.amount,
+    vehicleCost: selectedBranch.vehicleCost.amount,
+    rent: selectedBranch.rent.amount,
+  }), [company.id, company.name, selectedBranch])
+
   const value: BusinessContextValue = {
     company,
     selectedBranch,
+    currentBusinessContext,
+    hasUploadedBusinessContext,
     applyFinancialSnapshot,
   }
 

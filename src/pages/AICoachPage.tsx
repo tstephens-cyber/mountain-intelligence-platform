@@ -2,6 +2,7 @@ import { useState } from 'react'
 import type { FormEvent } from 'react'
 import AlertCard from '../components/AlertCard'
 import ExecutiveBriefCard from '../components/ExecutiveBriefCard'
+import { useBusinessContext } from '../context/BusinessContext'
 import { askCoach } from '../services/coachApi'
 import type { CoachType } from '../services/coachApi'
 
@@ -28,6 +29,7 @@ const scenarios = [
 ]
 
 function AICoachPage() {
+  const { currentBusinessContext, hasUploadedBusinessContext } = useBusinessContext()
   const [coachType, setCoachType] = useState<CoachType>('executive')
   const [question, setQuestion] = useState('')
   const [replyText, setReplyText] = useState<string>('')
@@ -50,6 +52,19 @@ function AICoachPage() {
       const result = await askCoach({
         coach_type: coachType,
         question: question.trim(),
+        business_context: {
+          extracted_metrics: currentBusinessContext,
+          current_dashboard_values: {
+            revenue: currentBusinessContext.revenue.toLocaleString('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }),
+            revenue_target: currentBusinessContext.revenueTarget.toLocaleString('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }),
+            scheduled_revenue: currentBusinessContext.scheduledRevenue.toLocaleString('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }),
+            ebitda_dollars: currentBusinessContext.ebitdaDollars.toLocaleString('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }),
+            ebitda_percent: `${currentBusinessContext.ebitdaPercent.toFixed(2)}%`,
+            labor_percent: `${currentBusinessContext.laborPercent.toFixed(2)}%`,
+            retention_percent: `${currentBusinessContext.retentionPercent.toFixed(2)}%`,
+            forecast_revenue: currentBusinessContext.forecastRevenue.toLocaleString('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }),
+          },
+        },
       })
 
       setReplyText(result.displayText)
@@ -75,6 +90,9 @@ function AICoachPage() {
         <div className="rounded-[2rem] border border-white/10 bg-slate-900/70 p-6">
           <h3 className="text-xl font-semibold text-white">Ask AI Coach</h3>
           <p className="mt-2 text-sm text-slate-300">Submit a question and get live coaching guidance from the backend.</p>
+          <p className="mt-2 text-xs text-slate-400">
+            {hasUploadedBusinessContext ? 'Using current uploaded business context' : 'No uploaded business context yet'}
+          </p>
 
           <form className="mt-5 space-y-4" onSubmit={handleSubmit}>
             <label className="block space-y-2">
